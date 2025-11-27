@@ -1,0 +1,12 @@
+# --- CONFIGURACIÓN DE RED DEL MASTER ---
+
+# Esto define el "Adaptador" que creamos en el código Java ("MasterAdapter").
+# Le decimos que escuche conexiones TCP en el puerto 10000.
+MasterAdapter.Endpoints=tcp -h localhost -p 10000
+
+# --- RENDIMIENTO ---
+# Cantidad de hilos para atender peticiones simultáneas de varios workers.
+Ice.ThreadPool.Server.Size=10
+
+# (Opcional) Muestra advertencias de conexión en la consola para depurar
+Ice.Warn.Connections=1

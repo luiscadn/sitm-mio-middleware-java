@@ -1,0 +1,17 @@
+<state>
+  <timestamp value='1764195775446' />
+  <sourceSet name='default'>
+    <source name='/Users/luiscadena/Downloads/helloworld-ret/SITM.ice'>
+      <file name='/Users/luiscadena/Downloads/helloworld-ret/client/build/generated-src/SITM/ArcStat.java' />
+      <file name='/Users/luiscadena/Downloads/helloworld-ret/client/build/generated-src/SITM/Worker.java' />
+      <file name='/Users/luiscadena/Downloads/helloworld-ret/client/build/generated-src/SITM/Master.java' />
+      <file name='/Users/luiscadena/Downloads/helloworld-ret/client/build/generated-src/SITM/ArcStatsHelper.java' />
+      <file name='/Users/luiscadena/Downloads/helloworld-ret/client/build/generated-src/SITM/WorkerPrx.java' />
+      <file name='/Users/luiscadena/Downloads/helloworld-ret/client/build/generated-src/SITM/_WorkerPrxI.java' />
+      <file name='/Users/luiscadena/Downloads/helloworld-ret/client/build/generated-src/SITM/MasterPrx.java' />
+      <file name='/Users/luiscadena/Downloads/helloworld-ret/client/build/generated-src/SITM/_MasterPrxI.java' />
+    </source>
+    <arg value='/opt/homebrew/bin/slice2java' />
+    <arg value='-I/opt/homebrew/share/ice/slice' />
+  </sourceSet>
+</state>

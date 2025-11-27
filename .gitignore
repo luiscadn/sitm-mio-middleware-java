@@ -1,0 +1,19 @@
+.gradle/
+build/
+build
+**/build/
+.vscode
+.settings
+.project
+.DS_Store
+
+# Java
+*.class
+*.jar
+*.war
+*.ear
+*.log
+
+
+.idea/
+*.tar.gz

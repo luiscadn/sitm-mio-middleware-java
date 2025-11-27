@@ -1,0 +1,42 @@
+plugins {
+    id 'com.zeroc.gradle.ice-builder.slice' version '1.5.2' apply false
+    id 'com.github.johnrengelman.shadow' version '7.1.2'
+}
+  
+subprojects {
+    apply plugin: 'java'
+    apply plugin: 'application'
+    apply plugin: 'com.zeroc.gradle.ice-builder.slice'
+    apply plugin: 'com.github.johnrengelman.shadow'
+
+    // Define main class for each project
+    ext.mainClassMap = [
+        'master': 'master.MasterServer',
+        'worker': 'worker.WorkerServer',
+        'client' : 'client.SubmitJobClient'
+    ]
+
+    // Set mainClassName for the application plugin
+    application {
+        if (project.name in mainClassMap) {
+            mainClass = mainClassMap[project.name]
+        }
+    }
+
+    slice {
+        java {
+            files = [file("../SITM.ice")]
+            iceHome = "/opt/homebrew"
+        }
+    }
+ 
+    repositories {
+        mavenCentral()
+    }
+ 
+    dependencies {
+        implementation 'com.zeroc:ice:3.7.9'
+        implementation 'com.google.code.gson:gson:2.8.8'
+    }
+
+}

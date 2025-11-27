@@ -1,0 +1,8 @@
+{
+  "jobId": 1,
+  "numLines": 2,
+  "outputPath": "output",
+  "filePath": "dummy_data.csv",
+  "startLine": 0,
+  "chunkId": 0
+}
