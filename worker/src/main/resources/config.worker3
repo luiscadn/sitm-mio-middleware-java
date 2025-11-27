@@ -1,0 +1,11 @@
+# --- REFERENCIA AL MASTER ---
+
+Master.Proxy=Master:tcp -h localhost -p 10000
+
+# --- CONFIGURACIÓN DEL WORKER ---
+Worker.Endpoints=tcp -h localhost -p 10003
+
+# --- OPCIONALES DE RENDIMIENTO ---
+Ice.ThreadPool.Server.Size=5
+
+Ice.Warn.Connections=1

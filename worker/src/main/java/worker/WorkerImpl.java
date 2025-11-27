@@ -5,47 +5,45 @@ import com.zeroc.Ice.Current;
 import com.zeroc.Ice.Communicator;
 import java.io.RandomAccessFile;
 import java.util.*;
+import java.text.SimpleDateFormat;
 
 public class WorkerImpl implements SITM.Worker {
     private Communicator communicator;
+    
+    private static final Map<Integer, double[]> busLastPosition = new HashMap<>();
 
     public WorkerImpl(Communicator communicator) {
         this.communicator = communicator;
     }
 
     @Override
-    public void processTask(int jobId, int chunkId, String fileName, long startOffset, long dataSize, MasterPrx master, Current current) {
-        System.out.println("[Worker] Procesando Chunk " + chunkId + " del Job " + jobId);
-        
+    public void processStream(String[] lines, MasterPrx master, Current current) {
         Map<Integer, double[]> localStats = new HashMap<>(); 
-        Map<Integer, double[]> busLastPosition = new HashMap<>();
-        int validLines = 0;
-        int errorLines = 0;
+        int processedCount = 0;
 
-        try (RandomAccessFile file = new RandomAccessFile(fileName, "r")) {
-            file.seek(startOffset);
-            long endPosition = startOffset + dataSize;
-            
-            if (startOffset > 0) {
-                file.readLine();
-            }
+        for (String line : lines) {
+            if (line.trim().isEmpty()) continue; 
 
-            String line;
-            while (file.getFilePointer() < endPosition && (line = file.readLine()) != null) {
-                if (line.trim().isEmpty()) continue;
+            String[] parts = line.split(",");
+            if (parts.length < 11) continue;
+
+            try {
+                int busId = Integer.parseInt(parts[2].trim());
                 
-                if (line.startsWith("datagramId") || line.startsWith("routeId")) continue;
-
-                String[] parts = line.split(",");
-                if (parts.length < 6) continue; 
-
+                double lat = Double.parseDouble(parts[4].trim()) / 10000000.0;
+                double lon = Double.parseDouble(parts[5].trim()) / 10000000.0;
+                
+                long time = 0;
                 try {
-                    int busId = Integer.parseInt(parts[1].trim());
-                    double lat = Double.parseDouble(parts[2].trim());
-                    double lon = Double.parseDouble(parts[3].trim());
-                    long time = Long.parseLong(parts[4].trim());
-                    int routeId = Integer.parseInt(parts[5].trim());
+                    SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                    time = sdf.parse(parts[10].trim()).getTime() / 1000;
+                } catch(Exception ex) {
+                    continue; 
+                }
 
+                int routeId = Integer.parseInt(parts[11].trim());
+
+                synchronized(busLastPosition) {
                     if (busLastPosition.containsKey(busId)) {
                         double[] last = busLastPosition.get(busId);
                         double distKm = haversine(last[0], last[1], lat, lon);
@@ -53,46 +51,54 @@ public class WorkerImpl implements SITM.Worker {
 
                         if (timeDiffHours > 0) {
                             double speed = distKm / timeDiffHours;
-
-                            if (speed < 150 && speed >= 0) { // Filtro un poco más relajado
+                            if (speed > 0 && speed < 150) { 
                                 localStats.putIfAbsent(routeId, new double[]{0.0, 0.0});
                                 double[] s = localStats.get(routeId);
                                 s[0] += speed;
                                 s[1] += 1.0;
-                                validLines++;
+                                processedCount++;
                             }
                         }
                     }
                     busLastPosition.put(busId, new double[]{lat, lon, (double) time});
-
-                } catch (Exception e) { 
-                    errorLines++;
                 }
+            } catch (Exception e) { 
             }
+        }
 
-            List<ArcStat> results = new ArrayList<>();
-            for (Map.Entry<Integer, double[]> entry : localStats.entrySet()) {
-                ArcStat stat = new ArcStat();
-                stat.routeId = entry.getKey();
-                stat.sumSpeed = entry.getValue()[0];
-                stat.count = (int) entry.getValue()[1];
-                results.add(stat);
-            }
+        if (processedCount > 0) {
+            System.out.println("[Worker] Stream Batch: Calculadas " + processedCount + " velocidades.");
+        }
 
+        List<ArcStat> results = new ArrayList<>();
+        for (Map.Entry<Integer, double[]> entry : localStats.entrySet()) {
+            ArcStat stat = new ArcStat();
+            stat.routeId = entry.getKey();
+            stat.sumSpeed = entry.getValue()[0];
+            stat.count = (int) entry.getValue()[1];
+            results.add(stat);
+        }
+
+        if (!results.isEmpty()) {
             if (master == null) {
                  String masterStr = communicator.getProperties().getProperty("Master.Proxy");
-                 master = MasterPrx.checkedCast(communicator.stringToProxy(masterStr));
+                 master = MasterPrx.uncheckedCast(communicator.stringToProxy(masterStr));
             }
-
-            System.out.println("[Worker] Chunk " + chunkId + ": Líneas válidas=" + validLines + ", Errores/Header=" + errorLines);
-            System.out.println("[Worker] Reportando " + results.size() + " rutas.");
-            
-            master.reportResult(jobId, chunkId, results.toArray(new ArcStat[0]));
-
-        } catch (Exception e) {
-            System.err.println("[Worker] Error crítico: " + e.getMessage());
-            e.printStackTrace();
+            master.reportResult(-1, 0, results.toArray(new ArcStat[0]));
         }
+    }
+    
+    @Override
+    public void processTask(int jobId, int chunkId, String fileName, long startOffset, long dataSize, MasterPrx master, Current current) {
+         
+         try (RandomAccessFile file = new RandomAccessFile(fileName, "r")) {
+            file.seek(startOffset);
+            long endPosition = startOffset + dataSize;
+            if (startOffset > 0) file.readLine();
+            String line;
+            while (file.getFilePointer() < endPosition && (line = file.readLine()) != null) {
+            }
+         } catch (Exception e) {}
     }
 
     private double haversine(double lat1, double lon1, double lat2, double lon2) {

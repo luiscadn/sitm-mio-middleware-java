@@ -5,19 +5,27 @@ import com.zeroc.Ice.*;
 
 public class WorkerServer {
     public static void main(String[] args) {
-        try (Communicator communicator = Util.initialize(args, "config.worker")) {
+        String configFile = "config.worker";
+        for (String arg : args) {
+            if (arg.startsWith("--config=")) {
+                configFile = arg.split("=")[1];
+                System.out.println("[System] Usando configuración personalizada: " + configFile);
+            }
+        }
+
+        try (Communicator communicator = Util.initialize(args, configFile)) {
             ObjectAdapter adapter = communicator.createObjectAdapter("Worker");
 
             WorkerImpl workerImpl = new WorkerImpl(communicator);
-
             ObjectPrx objectPrx = adapter.add(workerImpl, Util.stringToIdentity("worker"));
             
             adapter.activate();
-            System.out.println("Worker iniciado y escuchando...");
+            
+            System.out.println("Worker iniciado con config: " + configFile);
 
             String masterProxyStr = communicator.getProperties().getProperty("Master.Proxy");
             if (masterProxyStr == null) {
-                System.err.println("Error: Propiedad Master.Proxy no definida en config.worker");
+                System.err.println("Error: Propiedad Master.Proxy no definida");
                 return;
             }
 
@@ -28,14 +36,12 @@ public class WorkerServer {
             }
 
             WorkerPrx workerPrx = WorkerPrx.uncheckedCast(objectPrx);
-            
-            System.out.println("Registrándose en el Master...");
             master.registerWorker(workerPrx);
             System.out.println("¡Registro exitoso! Esperando tareas...");
 
             communicator.waitForShutdown();
             
-        } catch (java.lang.Exception e) { 
+        } catch (java.lang.Exception e) {
             e.printStackTrace();
         }
     }

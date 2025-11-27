@@ -4,6 +4,7 @@ import SITM.*;
 import com.zeroc.Ice.Current;
 import com.zeroc.Ice.Communicator;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.*;
 import java.io.*;
 import java.nio.file.*;
@@ -13,6 +14,9 @@ public class MasterImpl implements SITM.Master {
     private final ConcurrentMap<Integer, JobState> jobs = new ConcurrentHashMap<>();
     private final List<WorkerPrx> workers = Collections.synchronizedList(new ArrayList<>());
     
+    private final ConcurrentHashMap<Integer, Double> liveSpeedMap = new ConcurrentHashMap<>();
+    private final AtomicInteger roundRobinIndex = new AtomicInteger(0);
+
     private final Communicator communicator;
     private final Path manifestDir = Paths.get("manifests");
     private final Gson gson = new Gson();
@@ -31,6 +35,17 @@ public class MasterImpl implements SITM.Master {
 
     @Override
     public void reportResult(int jobId, int chunkId, SITM.ArcStat[] stats, Current current) {
+        if (jobId == -1) {
+            for (ArcStat stat : stats) {
+                liveSpeedMap.compute(stat.routeId, (k, v) -> {
+                    double currentAvg = (stat.count > 0) ? (stat.sumSpeed / stat.count) : 0;
+                    if (v == null) return currentAvg;
+                    return (v + currentAvg) / 2.0;
+                });
+            }
+            return; 
+        }
+
         JobState js = jobs.get(jobId);
         if (js == null) {
             System.out.println("[Master] Error: JobId desconocido: " + jobId);
@@ -52,6 +67,23 @@ public class MasterImpl implements SITM.Master {
                 System.out.println("--------------------------------------------------");
             }
         }
+    }
+
+    @Override
+    public void ingestStream(String[] lines, Current current) {
+        if (workers.isEmpty()) return;
+
+        int idx = roundRobinIndex.getAndIncrement() % workers.size();
+        if (idx < 0) idx = 0; 
+        WorkerPrx worker = workers.get(idx);
+
+        new Thread(() -> {
+            try {
+                worker.processStream(lines, null);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
     }
 
     @Override
@@ -96,6 +128,22 @@ public class MasterImpl implements SITM.Master {
     }
 
     public void startManifestWatcher() {
+        new Thread(() -> {
+            System.out.println("[LiveMonitor] Tablero de tiempo real activo.");
+            while (true) {
+                try {
+                    Thread.sleep(3000); 
+                    if (!liveSpeedMap.isEmpty()) {
+                        System.out.println("\n--- 🔴 TRÁFICO EN TIEMPO REAL ---");
+                        liveSpeedMap.forEach((route, speed) -> {
+                            System.out.printf("Ruta %d: %.2f km/h\n", route, speed);
+                        });
+                        System.out.println("---------------------------------");
+                    }
+                } catch (InterruptedException e) {}
+            }
+        }).start();
+
         new Thread(() -> {
             if (!Files.exists(manifestDir)) {
                 try { Files.createDirectories(manifestDir); } catch (IOException e) { e.printStackTrace(); }
