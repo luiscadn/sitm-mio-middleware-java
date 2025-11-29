@@ -20,9 +20,11 @@ public class MasterImpl implements SITM.Master {
     private final Communicator communicator;
     private final Path manifestDir = Paths.get("manifests");
     private final Gson gson = new Gson();
+    private final ExecutorService executor;
 
     public MasterImpl(Communicator communicator) {
         this.communicator = communicator;
+        this.executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
     }
 
     @Override
@@ -77,13 +79,13 @@ public class MasterImpl implements SITM.Master {
         if (idx < 0) idx = 0; 
         WorkerPrx worker = workers.get(idx);
 
-        new Thread(() -> {
+        executor.submit(() -> {
             try {
                 worker.processStream(lines, null);
             } catch (Exception e) {
                 e.printStackTrace();
             }
-        }).start();
+        });
     }
 
     @Override
@@ -116,14 +118,14 @@ public class MasterImpl implements SITM.Master {
             WorkerPrx assignedWorker = workers.get(i % workers.size());
             final int chunkId = i;
             
-            new Thread(() -> {
+            executor.submit(() -> {
                 try {
                     assignedWorker.processTask(jobId, chunkId, filePath, startOffset, size, null);
                 } catch (java.lang.Exception e) {
                     System.err.println("[Master] Falló envío a worker: " + e.getMessage());
                     e.printStackTrace();
                 }
-            }).start();
+            });
         }
     }
 
