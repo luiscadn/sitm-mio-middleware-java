@@ -15,7 +15,6 @@ module SITM {
     interface Master;
 
     interface Worker {
-        void processTask(int jobId, int chunkId, string fileName, long startOffset, long dataSize, Master* cb);
         void processStream(StringSeq lines, Master* cb);
     };
 

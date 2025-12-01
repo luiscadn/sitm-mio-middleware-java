@@ -1,4 +1,4 @@
-# --- REFERENCIA AL MASTER ---
+1# --- REFERENCIA AL MASTER ---
 # Define dónde está el Master para poder llamarlo (registerWorker, reportResult).
 # Debe coincidir con el puerto donde corre tu Master (usualmente 10000).
 Master.Proxy=Master:tcp -h localhost -p 10000
@@ -6,7 +6,7 @@ Master.Proxy=Master:tcp -h localhost -p 10000
 # --- CONFIGURACIÓN DEL WORKER ---
 # Define el puerto donde este Worker escuchará las llamadas 'processTask' del Master.
 # Nota: "Worker" aquí coincide con el nombre en adapter.createObjectAdapter("Worker")
-Worker.Endpoints=tcp -h localhost -p 10001
+Worker.Endpoints=tcp -h localhost
 
 # --- OPCIONALES DE RENDIMIENTO ---
 # Número de hilos para procesar peticiones entrantes

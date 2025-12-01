@@ -88,8 +88,15 @@ public class WorkerImpl implements SITM.Worker {
         }
     }
     
-    @Override
-    public void processTask(int jobId, int chunkId, String fileName, long startOffset, long dataSize, MasterPrx master, Current current) {
+    /**
+     * Procesa un chunk de datos de un archivo. Esta es la lógica principal del worker.
+     * @param jobId ID del job
+     * @param chunkId ID del chunk
+     * @param fileName Path del archivo a procesar
+     * @param startOffset Byte inicial del chunk
+     * @param dataSize Tamaño del chunk en bytes
+     */
+    public void processChunk(int jobId, int chunkId, String fileName, long startOffset, long dataSize) {
         System.out.println("[Worker] Procesando Job " + jobId + " Chunk " + chunkId);
         Map<Integer, double[]> localStats = new HashMap<>();
         int processedCount = 0;
@@ -169,10 +176,8 @@ public class WorkerImpl implements SITM.Worker {
         // Es CRUCIAL reportar siempre el resultado, incluso si está vacío,
         // para que el Master sepa que el chunk ha terminado.
         try {
-            if (master == null) {
-                String masterStr = communicator.getProperties().getProperty("Master.Proxy");
-                master = MasterPrx.uncheckedCast(communicator.stringToProxy(masterStr));
-            }
+            String masterStr = communicator.getProperties().getProperty("Master.Proxy");
+            MasterPrx master = MasterPrx.uncheckedCast(communicator.stringToProxy(masterStr));
             master.reportResult(jobId, chunkId, results.toArray(new ArcStat[0]));
         } catch (Exception e) {
             System.err.println("[Worker] Error al reportar resultados del chunk " + chunkId + ": " + e.getMessage());

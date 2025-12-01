@@ -12,6 +12,10 @@ import com.google.gson.Gson;
 import java.util.Map;
 import java.util.HashMap;
 
+// Imports para JMS y ActiveMQ
+import javax.jms.*;
+import org.apache.activemq.ActiveMQConnectionFactory;
+
 
 public class MasterImpl implements SITM.Master {
 
@@ -109,17 +113,7 @@ public class MasterImpl implements SITM.Master {
     @Override
     public void jobFinished(int jobId, Current current) { }
 
-    public void submitJobFromClient(int jobId, int totalChunks, String outputPath, String filePath) throws InterruptedException {
-        while (workers.isEmpty()) {
-            System.out.println("[Master] Esperando al menos un Worker...");
-            Thread.sleep(1000);
-        }
-
-        if (workers.isEmpty()) {
-            System.out.println("[Master] ERROR: No hay workers registrados.");
-            return;
-        }
-
+    public void submitJobFromClient(int jobId, int totalChunks, String outputPath, String filePath) {
         JobState js = new JobState(jobId, totalChunks, outputPath);
         js.setStartTime(System.nanoTime());
         jobs.put(jobId, js);
@@ -131,24 +125,52 @@ public class MasterImpl implements SITM.Master {
             return;
         }
 
-        long fileSize = inputFile.length();
-        long chunkSize = fileSize / totalChunks;
+        // Lógica de JMS para enviar tareas a la cola
+        ConnectionFactory connectionFactory = new ActiveMQConnectionFactory("tcp://localhost:61616");
+        Connection connection = null;
+        Session session = null;
+        MessageProducer producer = null;
 
-        for (int i = 0; i < totalChunks; i++) {
-            long startOffset = i * chunkSize;
-            long size = (i == totalChunks - 1) ? (fileSize - startOffset) : chunkSize;
+        try {
+            connection = connectionFactory.createConnection();
+            connection.start();
 
-            WorkerPrx assignedWorker = workers.get(i % workers.size());
-            final int chunkId = i;
+            session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            Destination destination = session.createQueue("SITM_task_queue");
+            producer = session.createProducer(destination);
+            producer.setDeliveryMode(DeliveryMode.NON_PERSISTENT); // Para simplificar
 
-            executor.submit(() -> {
-                try {
-                    assignedWorker.processTask(jobId, chunkId, filePath, startOffset, size, null);
-                } catch (Exception e) {
-                    System.err.println("[Master] Falló envío a worker: " + e.getMessage());
-                    e.printStackTrace();
-                }
-            });
+            long fileSize = inputFile.length();
+            long chunkSize = fileSize / totalChunks;
+
+            System.out.println("[Master] Publicando " + totalChunks + " tareas en la cola...");
+            for (int i = 0; i < totalChunks; i++) {
+                long startOffset = i * chunkSize;
+                long size = (i == totalChunks - 1) ? (fileSize - startOffset) : chunkSize;
+
+                MapMessage message = session.createMapMessage();
+                message.setInt("jobId", jobId);
+                message.setInt("chunkId", i);
+                message.setString("filePath", filePath);
+                message.setLong("startOffset", startOffset);
+                message.setLong("dataSize", size);
+
+                producer.send(message);
+            }
+            System.out.println("[Master] Todas las tareas del Job " + jobId + " han sido publicadas.");
+
+        } catch (JMSException e) {
+            System.err.println("[Master] Error al publicar tareas en la cola: " + e.getMessage());
+            e.printStackTrace();
+        } finally {
+            // Cerrar recursos en orden inverso y de forma segura
+            try {
+                if (producer != null) producer.close();
+                if (session != null) session.close();
+                if (connection != null) connection.close();
+            } catch (JMSException e) {
+                e.printStackTrace();
+            }
         }
     }
 
