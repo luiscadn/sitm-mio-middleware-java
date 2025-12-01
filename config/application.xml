@@ -1,0 +1,38 @@
+<icegrid>
+    <application name="SITMApp">
+
+        <!-- Nodo principal -->
+        <node name="Node1">
+            <!-- Master -->
+            <server id="MasterServer" exe="java" activation="on-demand">
+                <option>-jar</option>
+                <option>/Users/isabellacv/sitm-mio-middleware-java/build/libs/master-all.jar</option>
+                <adapter name="MasterAdapter" endpoints="default -p 10000">
+                    <object identity="master" type="SITM.Master"/>
+                </adapter>
+            </server>
+
+            <!-- Worker 1 -->
+            <server id="WorkerServer1" exe="java" activation="on-demand">
+                <option>-jar</option>
+                <option>/Users/isabellacv/sitm-mio-middleware-java/build/libs/worker-all.jar</option>
+                <adapter name="WorkerAdapter" endpoints="default">
+                    <object identity="worker" type="SITM.Worker"/>
+                </adapter>
+            </server>
+        </node>
+
+        <!-- Nodo secundario -->
+        <node name="Node2">
+            <!-- Worker 2 -->
+            <server id="WorkerServer2" exe="java" activation="on-demand">
+                <option>-jar</option>
+                <option>/Users/isabellacv/sitm-mio-middleware-java/build/libs/worker-all.jar</option>
+                <adapter name="WorkerAdapter2" endpoints="default">
+                    <object identity="worker2" type="SITM.Worker"/>
+                </adapter>
+            </server>
+        </node>
+
+    </application>
+</icegrid>

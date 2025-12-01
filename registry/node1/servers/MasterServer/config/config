@@ -1,0 +1,12 @@
+# Configuration file (11/30/25 19:09:00.761)
+
+# Server configuration
+Ice.Admin.ServerId=MasterServer
+Ice.Admin.Endpoints=tcp -h localhost
+Ice.ProgramName=MasterServer
+# Object adapter MasterAdapter
+MasterAdapter.Endpoints=default -p 10000
+MasterAdapter.AdapterId=MasterServer.MasterAdapter
+Ice.StdErr=registry/node1/output/MasterServer.err
+Ice.StdOut=registry/node1/output/MasterServer.out
+Ice.Default.Locator=SITMRegistry/Locator:tcp -p 4061

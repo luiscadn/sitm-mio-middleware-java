@@ -1,5 +1,5 @@
 module SITM {
-    
+
     struct ArcStat {
         int routeId;
         double sumSpeed;
@@ -7,15 +7,21 @@ module SITM {
     };
 
     sequence<ArcStat> ArcStats;
-    sequence<string> StringSeq; // Nuevo: Para enviar lotes de líneas CSV
+    sequence<string> StringSeq;
 
-    interface Master; 
+    // ✅ Declaración del dictionary
+    dictionary<int, double> IntDoubleMap;
+
+    interface Master;
 
     interface Worker {
         void processTask(int jobId, int chunkId, string fileName, long startOffset, long dataSize, Master* cb);
-        
-        // NUEVO: Procesa un lote de líneas en memoria
         void processStream(StringSeq lines, Master* cb);
+    };
+
+    // ---------- OBSERVER ----------
+    interface TrafficSubscriber {
+        void updateSpeeds(IntDoubleMap liveSpeeds);
     };
 
     interface Master {
@@ -23,7 +29,11 @@ module SITM {
         void reportResult(int jobId, int chunkId, ArcStats stats);
         void jobFinished(int jobId);
 
-        // NUEVO: Recibe datos en vivo desde el cliente
+        // Stream desde un cliente productor
         void ingestStream(StringSeq lines);
+
+        // ---------- OBSERVER ----------
+        void registerTrafficSubscriber(TrafficSubscriber* sub);
+        void unregisterTrafficSubscriber(TrafficSubscriber* sub);
     };
 };

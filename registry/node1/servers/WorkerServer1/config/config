@@ -1,0 +1,12 @@
+# Configuration file (11/30/25 19:09:00.762)
+
+# Server configuration
+Ice.Admin.ServerId=WorkerServer1
+Ice.Admin.Endpoints=tcp -h localhost
+Ice.ProgramName=WorkerServer1
+# Object adapter WorkerAdapter
+WorkerAdapter.Endpoints=default
+WorkerAdapter.AdapterId=WorkerServer1.WorkerAdapter
+Ice.StdErr=registry/node1/output/WorkerServer1.err
+Ice.StdOut=registry/node1/output/WorkerServer1.out
+Ice.Default.Locator=SITMRegistry/Locator:tcp -p 4061

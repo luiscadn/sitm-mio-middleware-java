@@ -1,6 +1,6 @@
 package master;
 
-import SITM.*; 
+import SITM.*;
 import com.zeroc.Ice.Current;
 import com.zeroc.Ice.Communicator;
 import java.util.concurrent.*;
@@ -9,18 +9,28 @@ import java.util.*;
 import java.io.*;
 import java.nio.file.*;
 import com.google.gson.Gson;
+import java.util.Map;
+import java.util.HashMap;
+
 
 public class MasterImpl implements SITM.Master {
+
     private final ConcurrentMap<Integer, JobState> jobs = new ConcurrentHashMap<>();
     private final List<WorkerPrx> workers = Collections.synchronizedList(new ArrayList<>());
-    
+
     private final ConcurrentHashMap<Integer, Double> liveSpeedMap = new ConcurrentHashMap<>();
     private final AtomicInteger roundRobinIndex = new AtomicInteger(0);
 
     private final Communicator communicator;
-    private final Path manifestDir = Paths.get("manifests");
+    private final Path manifestDir = Paths.get("master/manifests");
     private final Gson gson = new Gson();
     private final ExecutorService executor;
+
+    // ---------------- OBSERVER ----------------
+    private final List<TrafficSubscriberPrx> subscribers =
+            Collections.synchronizedList(new ArrayList<>());
+
+    // ------------------------------------------
 
     public MasterImpl(Communicator communicator) {
         this.communicator = communicator;
@@ -37,31 +47,38 @@ public class MasterImpl implements SITM.Master {
 
     @Override
     public void reportResult(int jobId, int chunkId, SITM.ArcStat[] stats, Current current) {
+
+        // STREAMING en tiempo real
         if (jobId == -1) {
             for (ArcStat stat : stats) {
                 liveSpeedMap.compute(stat.routeId, (k, v) -> {
                     double currentAvg = (stat.count > 0) ? (stat.sumSpeed / stat.count) : 0;
+
                     if (v == null) return currentAvg;
                     return (v + currentAvg) / 2.0;
                 });
             }
-            return; 
+
+            // 🔔 Notificar a los suscriptores
+            notifySubscribers();
+            return;
         }
 
+        // --------- JOB NORMAL ----------
         JobState js = jobs.get(jobId);
         if (js == null) {
             System.out.println("[Master] Error: JobId desconocido: " + jobId);
             return;
         }
-        
+
         js.addPartial(chunkId, stats);
         System.out.println("[Master] Job " + jobId + " | Chunk " + chunkId + " procesado.");
-        
+
         synchronized(js) {
             if (js.isComplete() && !js.isFinished()) {
                 js.markFinished();
                 js.aggregateAndPersist();
-                
+
                 long elapsedMs = (System.nanoTime() - js.startTime) / 1_000_000;
                 System.out.println("--------------------------------------------------");
                 System.out.println("[Master] ¡JOB " + jobId + " COMPLETADO EXITOSAMENTE!");
@@ -76,7 +93,8 @@ public class MasterImpl implements SITM.Master {
         if (workers.isEmpty()) return;
 
         int idx = roundRobinIndex.getAndIncrement() % workers.size();
-        if (idx < 0) idx = 0; 
+        if (idx < 0) idx = 0;
+
         WorkerPrx worker = workers.get(idx);
 
         executor.submit(() -> {
@@ -91,7 +109,12 @@ public class MasterImpl implements SITM.Master {
     @Override
     public void jobFinished(int jobId, Current current) { }
 
-    public void submitJobFromClient(int jobId, int totalChunks, String outputPath, String filePath) {
+    public void submitJobFromClient(int jobId, int totalChunks, String outputPath, String filePath) throws InterruptedException {
+        while (workers.isEmpty()) {
+            System.out.println("[Master] Esperando al menos un Worker...");
+            Thread.sleep(1000);
+        }
+
         if (workers.isEmpty()) {
             System.out.println("[Master] ERROR: No hay workers registrados.");
             return;
@@ -109,19 +132,19 @@ public class MasterImpl implements SITM.Master {
         }
 
         long fileSize = inputFile.length();
-        long chunkSize = fileSize / totalChunks; 
-        
+        long chunkSize = fileSize / totalChunks;
+
         for (int i = 0; i < totalChunks; i++) {
             long startOffset = i * chunkSize;
             long size = (i == totalChunks - 1) ? (fileSize - startOffset) : chunkSize;
-            
+
             WorkerPrx assignedWorker = workers.get(i % workers.size());
             final int chunkId = i;
-            
+
             executor.submit(() -> {
                 try {
                     assignedWorker.processTask(jobId, chunkId, filePath, startOffset, size, null);
-                } catch (java.lang.Exception e) {
+                } catch (Exception e) {
                     System.err.println("[Master] Falló envío a worker: " + e.getMessage());
                     e.printStackTrace();
                 }
@@ -129,12 +152,47 @@ public class MasterImpl implements SITM.Master {
         }
     }
 
+    // ----------------- OBSERVER API -----------------
+
+    @Override
+    public void registerTrafficSubscriber(TrafficSubscriberPrx sub, Current c) {
+        subscribers.add(sub);
+        System.out.println("[Observer] Nuevo suscriptor agregado: " + sub);
+    }
+
+    @Override
+    public void unregisterTrafficSubscriber(TrafficSubscriberPrx sub, Current c) {
+        subscribers.remove(sub);
+        System.out.println("[Observer] Suscriptor eliminado.");
+    }
+
+    private void notifySubscribers() {
+        if (subscribers.isEmpty()) return;
+
+        Map<Integer, Double> snapshot = new HashMap<>();
+        snapshot.putAll(liveSpeedMap);
+
+        synchronized (subscribers) {
+            subscribers.removeIf(sub -> {
+                try {
+                    sub.updateSpeeds(snapshot);
+                    return false;
+                } catch (Exception e) {
+                    System.out.println("[Observer] Suscriptor desconectado, se elimina.");
+                    return true;
+                }
+            });
+        }
+    }
+
+    // ----------------- WATCHERS Y MONITOR -----------------
+
     public void startManifestWatcher() {
         new Thread(() -> {
             System.out.println("[LiveMonitor] Tablero de tiempo real activo.");
             while (true) {
                 try {
-                    Thread.sleep(3000); 
+                    Thread.sleep(3000);
                     if (!liveSpeedMap.isEmpty()) {
                         System.out.println("\n--- 🔴 TRÁFICO EN TIEMPO REAL ---");
                         liveSpeedMap.forEach((route, speed) -> {
@@ -160,22 +218,22 @@ public class MasterImpl implements SITM.Master {
                     if (files != null) {
                         for (File file : files) {
                             System.out.println("[Master] Archivo detectado: " + file.getName());
-                            
+
                             String content = new String(Files.readAllBytes(file.toPath()));
                             Manifest manifest = gson.fromJson(content, Manifest.class);
-                            
+
                             if (manifest.filePath != null) {
                                 System.out.println("[Master] Procesando Job " + manifest.jobId + "...");
                                 submitJobFromClient(manifest.jobId, manifest.totalChunks, manifest.outputPath, manifest.filePath);
-                                
+
                                 File doneFile = new File(folder, file.getName() + ".done");
                                 file.renameTo(doneFile);
                             }
                         }
                     }
                     Thread.sleep(2000);
-                    
-                } catch (java.lang.Exception e) {
+
+                } catch (Exception e) {
                     System.err.println("[Master] Error en el watcher: " + e.getMessage());
                     e.printStackTrace();
                 }
